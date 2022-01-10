@@ -1,16 +1,16 @@
 ---
 title: 'PEC4: Clasificación de Splice Junctions'
 author: "Marcos Zamora Amengual"
-date: "10/1/2022"
+date: "`r Sys.Date()`"
 output:
-    html_document:
+  html_document:
     toc: true
     toc_depth: 3
     toc_float: 
       collapsed: true
       smooth_scroll: true
     number_sections: true
-    theme: cosmo
+    theme: cerulean
     highlight: textmate
 editor_options: 
   chunk_output_type: console
@@ -18,24 +18,22 @@ editor_options:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, comment = NULL, cache = TRUE)
+
+setwd('D:/Users/marcos.zamora/Documents/Machine Learning')
 ```
 
-## R Markdown
+# Introducción
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+<p align="justify">Vamos a generar una serie de clasificadores para predecir los sitios de splicing en el genoma, utilizando distintos algoritmos de Machine Learning. Vamos a realizar la codificación de los algoritmos en R usando el paquete caret. La finalidad del análisis es analizar la potencia de los distintos clasificadores de Machine Learning y generar una guía práctica de los principales algoritmos de clasificación que existen dentro del ML. Los algoritmos que utilizaremos para estudiar las Splice Junctions serán:<p>
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+- k-Nearest Neighbours
+- Naive Bayes
+- Artificial Neural Network
+- Support Vector Machine
+- Árbol de Clasificación
+- Random Forest
 
-```{r cars}
-summary(cars)
-```
 
-## Including Plots
+# Obtención de las Muestras de Train y Test
 
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
-```
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+<p align="justify">Para comenzar el análisis, lo primero que debemos hacer es introducir nuestros datos en R y dividirlos en dos sets de datos, train y test, para poder implementar los distintos clasificadores utilizando los mismo parámetros de entrada y por lo tanto poderlos comparar entre sí<p>
