@@ -30,6 +30,8 @@ library(e1071)
 library(kernlab)
 library(neuralnet)
 library(C50)
+library(randomForest)
+library(h2o)
 ```
 
 # Introducción
@@ -99,9 +101,25 @@ tt_split(SpliceData, 67)
 
 # Autoencoder Convolucional
 
-```{r}
-# Autoencoder
+```{r, cache= TRUE}
+h2o.no_progress()  # desactivamos las barras de progreso
+h2o.init()  # inicializamos una instancia del H2O
+
+model <- h2o.deeplearning(
+  x = 2:480,
+  training_frame = as.h2o(df_train),
+  autoencoder = TRUE,
+  activation = "Tanh",
+  ignore_const_cols = FALSE
+)
+
+ae1_codings <- h2o.deepfeatures(model, as.h2o(df_train), layer = 1)
+
+features <- as.matrix(ae1_codings)
+
+features
 ```
+
 
 # Algoritmos de Clasificación
 
@@ -111,6 +129,23 @@ tt_split(SpliceData, 67)
 
 <p align="justify">Vamos a comenzar implementando un clasificador k-NN que clasifica las muestras incognita dependiendo de su proximidad con el resto de muestras conocidas. Dependiendo de que tipos de muestras estén cerca de la enigma, así la clasificará el algoritmo. Hemos probado el algoritmo con un valor de k igual a 
 1, 3, 5, 7 y hemos comprobado que el algoritmo que mejor clasificaba las muestras correctamente era el que tenía un valor de k = 7 y por ello solo mostramos su matriz de confusión para hacer más digerible el documento</p>
+
+```{r}
+Knn_algor <- function(df_train, df_test, df_train_labels, df_test_labels, k = c(1,3,5,7)){
+  
+  for(i in k){
+  
+  model_preds <- knn(train = df_train, test = df_test, cl = df_train_labels, k = i)
+  
+  tab <- table(model_preds, df_test_labels, dnn = c("Actual", "Predicha"))
+  
+  print(confusionMatrix(tab))
+  }
+}
+
+Knn_algor(df_train, df_test, df_train_labels, df_test_labels, k = 7)
+```
+
 
 ```{r, cache= TRUE}
 Knn_algor <- function(df_train, df_test, df_train_labels, df_test_labels, k = c(1,3,5,7)){
@@ -157,17 +192,17 @@ NB_algor(df_train, df_test, df_train_labels, df_test_labels, laplace = 1)
 
 ```{r, cache = TRUE}
 # NN_class <- function(df_train_data, df_test, df_test_labels, p = c(5, 10, 20)){
-#   
+# 
 #   for(i in p){
-#     NNmodel <- neuralnet(class ~ ., data = df_train_data, hidden = c(100, i), act.fct = "logistic")
-#     
+#     NNmodel <- neuralnet(class ~ ., data = df_train_data, hidden = c(20, i), act.fct = "logistic")
+# 
 #     NN_pred <- compute(NNmodel, df_test)
-#     
+# 
 #     # predicted <- NN_pred$net.result
-#     #  
+#     #
 #     # print(predicted)
 #   }
-#   
+# 
 # }
 # 
 # NN_class(df_train_data, df_test, df_test_labels)
@@ -178,17 +213,17 @@ NB_algor(df_train, df_test, df_train_labels, df_test_labels, laplace = 1)
 
 ```{r, cache =TRUE}
 SVM_class <- function(df_train_data, df_test, df_test_labels, kernel = c("rbfdot", "vanilladot")){
-  
+
   for(i in kernel){
     SVMmodel <- ksvm(class ~ ., data = df_train_data, trials = i)
-    
+
     SVM_pred <- predict(SVMmodel, df_test)
-    
+
     tab <- table(SVM_pred, df_test_labels, dnn = c("Actual", "Predicha"))
-    
+
     print(confusionMatrix(tab))
   }
-  
+
 }
 
 SVM_class(df_train_data, df_test, df_test_labels, kernel = "rbfdot")
@@ -219,5 +254,19 @@ Tree_class(df_train, df_test, df_train_labels, df_test_labels)
 Random Forest. Se explorará la opción de número de árboles n = 50, 100.
 
 ```{r, cache =TRUE}
+RandomF_class <- function(df_train, df_test, df_train_labels, df_test_labels, n = c(50, 100)){
 
+  for(i in n){
+    RandomFModel <- randomForest(df_train, df_train_labels, maxnodes = i)
+
+    RandomFModel_pred <- predict(RandomFModel, df_test)
+
+    tab <- table(RandomFModel_pred, df_test_labels, dnn = c("Actual", "Predicha"))
+
+    print(confusionMatrix(tab))
+  }
+
+}
+
+Tree_class(df_train, df_test, df_train_labels, df_test_labels)
 ```

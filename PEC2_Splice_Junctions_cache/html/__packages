@@ -9,3 +9,5 @@ e1071
 kernlab
 neuralnet
 C50
+randomForest
+h2o
