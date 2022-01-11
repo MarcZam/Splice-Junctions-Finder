@@ -17,20 +17,24 @@ editor_options:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, comment = NULL, cache = TRUE)
+knitr::opts_chunk$set(echo = TRUE, comment = NULL)
 
-setwd('D:/Users/marcos.zamora/Documents/Machine Learning')
+setwd('D:/Docs/Masteres/Master en Bioinformática y Bioestadística/Tercer Semestre/M0.163 - Machine Learning/Splice-Junctions-Finder')
 
 library(dplyr)
 library(kableExtra)
 library(caret)
 library(class)
 library(gmodels)
+library(e1071)
+library(kernlab)
+library(neuralnet)
+library(C50)
 ```
 
 # Introducción
 
-<p align="justify">Vamos a generar una serie de clasificadores para predecir los sitios de splicing en el genoma, utilizando distintos algoritmos de Machine Learning. Vamos a realizar la codificación de los algoritmos en R usando el paquete caret. La finalidad del análisis es analizar la potencia de los distintos clasificadores de Machine Learning y generar una guía práctica de los principales algoritmos de clasificación que existen dentro del ML. Los algoritmos que utilizaremos para estudiar las Splice Junctions serán:<p>
+<p align="justify">Vamos a generar una serie de clasificadores para predecir los sitios de splicing en el genoma, utilizando distintos algoritmos de Machine Learning. Vamos a realizar la codificación de los algoritmos en R usando el paquete caret. La finalidad del análisis es analizar la potencia de los distintos clasificadores de Machine Learning y generar una guía práctica de los principales algoritmos de clasificación que existen dentro del ML. Los algoritmos que utilizaremos para estudiar las Splice Junctions serán:</p>
 
 - k-Nearest Neighbours
 - Naive Bayes
@@ -40,9 +44,9 @@ library(gmodels)
 - Random Forest
 
 
-# Obtención de las Muestras de Train y Test
+# Muestras de Train y Test
 
-<p align="justify">Para comenzar el análisis, lo primero que debemos hacer es introducir nuestros datos en R y dividirlos en dos sets de datos, train y test, para poder implementar los distintos clasificadores utilizando los mismo parámetros de entrada y por lo tanto poderlos comparar entre sí. Vamos a introducir los datos del fichero **splice.csv** y vamos a transformarlo para que sea más facil de utilizar a la hora de implementar los algoritmos. Vamos a modificar la columna que nos muestra la clase de secuencia para que sea un factor con 3 niveles<p>
+<p align="justify">Para comenzar el análisis, lo primero que debemos hacer es introducir nuestros datos en R y dividirlos en dos sets de datos, train y test, para poder implementar los distintos clasificadores utilizando los mismo parámetros de entrada y por lo tanto poderlos comparar entre sí. Vamos a introducir los datos del fichero **splice.csv** y vamos a transformarlo para que sea más facil de utilizar a la hora de implementar los algoritmos. Vamos a modificar la columna que nos muestra la clase de secuencia para que sea un factor con 3 niveles</p>
 
 ```{r}
 SpliceData <- read.csv("splice.csv", sep = ",", header = TRUE)
@@ -54,7 +58,7 @@ knitr::kable(head(SpliceData[,1:10])) %>%
   kable_minimal(full_width = T)
 ```
 
-<p align="justify">Podemos mostrar como se dividen las secuencias entre las 3 classes del set de datos, las zonas frontera, EI, las IE y los tránscritos sin zonas de splicing. Se puede comprobar que más o menos la mitad de las secuencias no contienen zonas de splicing mientras que la otra mitad se dividen equitativamente entre las secuencias frontera Intrón-Exón y las Exón-Intrón<p>
+<p align="justify">Podemos mostrar como se dividen las secuencias entre las 3 classes del set de datos, las zonas frontera, EI, las IE y los tránscritos sin zonas de splicing. Se puede comprobar que más o menos la mitad de las secuencias no contienen zonas de splicing mientras que la otra mitad se dividen equitativamente entre las secuencias frontera Intrón-Exón y las Exón-Intrón</p>
 
 ```{r}
 table_prop <- count(SpliceData, class)
@@ -65,7 +69,7 @@ knitr::kable(table_prop) %>%
   kable_minimal(full_width = F)
 ```
 
-<p align="justify">Vamos a mezclar las filas para que no estén agrupadas las lecturas de las distintas clases, vamos a dividir el data set en dos partes, cogiendo todos los valores de las secuencias codificadas por un lado y las clases de las secuencias por otro y luego vamos a dividir el set en dos subsets de training 67% y testing 33%<p>
+<p align="justify">Vamos a mezclar las filas para que no estén agrupadas las lecturas de las distintas clases, vamos a dividir el data set en dos partes, cogiendo todos los valores de las secuencias codificadas por un lado y las clases de las secuencias por otro y luego vamos a dividir el set en dos subsets de training 67% y testing 33%</p>
 
 ```{r}
 tt_split <- function(df, train_percentage){
@@ -79,6 +83,8 @@ tt_split <- function(df, train_percentage){
   # dividimos los data sets en train y test data y extraemos la columna correspondiente a las labels para cada set
   percent <- round(((nrow(SpliceData)/100) * train_percentage), 0)
   
+  df_train_data <<- df[1:percent, -2]
+  
   df_train <<- df[1:percent, -c(1,2)]
   df_test <<- df[(percent+1):nrow(df), -c(1,2)]
   
@@ -91,7 +97,7 @@ tt_split <- function(df, train_percentage){
 tt_split(SpliceData, 67)
 ```
 
-# Implementación del Autoencoder Convolucional
+# Autoencoder Convolucional
 
 ```{r}
 # Autoencoder
@@ -99,28 +105,119 @@ tt_split(SpliceData, 67)
 
 # Algoritmos de Clasificación
 
-<p align="justify">Con los datos del estudio ya definidos vamos a implementar los distintos algoritmos de clasificación que hemos estudiado durante el curso. Los algoritmos que implementaremos serán 6, los implementaremos utilizando el paquete **caret** y analizaremos su eficacia a la hora de clasificar las muestras utilizando la función **confusionMatrix()** del mismo<p>
+<p align="justify">Con los datos del estudio ya definidos vamos a implementar los distintos algoritmos de clasificación que hemos estudiado durante el curso. Los algoritmos que implementaremos serán 6, los implementaremos utilizando el paquete **caret** y analizaremos su eficacia a la hora de clasificar las muestras utilizando la función **confusionMatrix()** del mismo</p>
 
 ## Algortimo k-NN
 
-<p align="justify"Vamos a comenzar implementando un clasificador k-NN que clasifica las muestras enigma dependiendo de su proximidad con el resto de muestras conocidas. Dependiendo de que tipos de muestras estén cerca de la enigma, así la clasificará el algoritmo. Hemos probado el algoritmo con un valor de k igual a 
-1, 3, 5, 7 y hemos comprobado que el algoritmo que mejor clasificaba las muestras correctamente era el que tenía un valor de k = 7 y por ello solo mostramos su matriz de confusión para hacer más digerible el documento<p>
+<p align="justify">Vamos a comenzar implementando un clasificador k-NN que clasifica las muestras incognita dependiendo de su proximidad con el resto de muestras conocidas. Dependiendo de que tipos de muestras estén cerca de la enigma, así la clasificará el algoritmo. Hemos probado el algoritmo con un valor de k igual a 
+1, 3, 5, 7 y hemos comprobado que el algoritmo que mejor clasificaba las muestras correctamente era el que tenía un valor de k = 7 y por ello solo mostramos su matriz de confusión para hacer más digerible el documento</p>
 
-```{r}
-
-Knn_algor <- function(df_train, df_test, df_train_labels, df_test_labels, k = 7){
+```{r, cache= TRUE}
+Knn_algor <- function(df_train, df_test, df_train_labels, df_test_labels, k = c(1,3,5,7)){
   
   for(i in k){
   
   model_preds <- knn(train = df_train, test = df_test, cl = df_train_labels, k = i)
   
-  CrossTable <- CrossTable(x = df_test_labels, y = model_preds, prop.chisq =FALSE)
-
-  CrossTable
+  tab <- table(model_preds, df_test_labels, dnn = c("Actual", "Predicha"))
+  
+  print(confusionMatrix(tab))
   }
 }
 
-Knn_algor(df_train, df_test, df_train_labels, df_test_labels)
+Knn_algor(df_train, df_test, df_train_labels, df_test_labels, k = 7)
 ```
 
 ## Algoritmo Naive Bayes
+
+<p align="justify">El segundo algoritmo que vamos a utilizar para clasificar nuestras secuencias será el algoritmo Naive Bayes. Este algoritmo se basa en el Teorema de Bayes y asume que los predictores son independientes entre sí. Vamos a probar el algoritmo para dos niveles del valor laplace, 0 y 1, pero mostraremos tan solo la iteración del algoritmo que creamos que hace un mejor trabajo a la hora de clasificar correctamente las secuencias.</p>
+
+<p align="justify">En este caso no hemos sabido ajustar el modelo adecaudamente y por ello, el modelo ha obviado la clase EI y no ha clasificado ninguna secuencia como perteneciente a esta clase. De todos modos, en ambos casos, tanto para el valor de laplace = 0 como para laplace = 1, y por lo tanto hemos escogido el modelo sin aplanar para mostrarlo en el resultado final</p>
+
+```{r, cache = TRUE}
+NB_algor <- function(df_train, df_test, df_train_labels, df_test_labels, laplace = c(0, 1)){
+
+  for(i in laplace){
+    naive_bayes <- naiveBayes(df_train, df_train_labels, laplace = i)
+    
+    predictions <- predict(naive_bayes, df_test)
+    
+    tab <- table(predictions, df_test_labels, dnn = c("Actual", "Predicha"))
+    
+    print(confusionMatrix(tab))
+  }
+}
+
+NB_algor(df_train, df_test, df_train_labels, df_test_labels, laplace = 1)
+```
+
+## Artificial Neural Network
+
+<p align="justify"></p>
+
+```{r, cache = TRUE}
+# NN_class <- function(df_train_data, df_test, df_test_labels, p = c(5, 10, 20)){
+#   
+#   for(i in p){
+#     NNmodel <- neuralnet(class ~ ., data = df_train_data, hidden = c(100, i), act.fct = "logistic")
+#     
+#     NN_pred <- compute(NNmodel, df_test)
+#     
+#     # predicted <- NN_pred$net.result
+#     #  
+#     # print(predicted)
+#   }
+#   
+# }
+# 
+# NN_class(df_train_data, df_test, df_test_labels)
+```
+
+
+## Support Vector Machine
+
+```{r, cache =TRUE}
+SVM_class <- function(df_train_data, df_test, df_test_labels, kernel = c("rbfdot", "vanilladot")){
+  
+  for(i in kernel){
+    SVMmodel <- ksvm(class ~ ., data = df_train_data, trials = i)
+    
+    SVM_pred <- predict(SVMmodel, df_test)
+    
+    tab <- table(SVM_pred, df_test_labels, dnn = c("Actual", "Predicha"))
+    
+    print(confusionMatrix(tab))
+  }
+  
+}
+
+SVM_class(df_train_data, df_test, df_test_labels, kernel = "rbfdot")
+```
+
+## Árbol de Clasificación
+
+```{r, cache =TRUE}
+Tree_class <- function(df_train, df_test, df_train_labels, df_test_labels, boosting = c(0, 1)){
+
+  for(i in boosting){
+    TreeModel <- C5.0(df_train, df_train_labels, kernel = i)
+
+    TM_pred <- predict(TreeModel, df_test)
+
+    tab <- table(TM_pred, df_test_labels, dnn = c("Actual", "Predicha"))
+
+    print(confusionMatrix(tab))
+  }
+
+}
+
+Tree_class(df_train, df_test, df_train_labels, df_test_labels)
+```
+
+## Random Forest
+
+Random Forest. Se explorará la opción de número de árboles n = 50, 100.
+
+```{r, cache =TRUE}
+
+```

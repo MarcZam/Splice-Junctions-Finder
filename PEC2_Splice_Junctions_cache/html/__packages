@@ -5,3 +5,7 @@ lattice
 caret
 gmodels
 class
+e1071
+kernlab
+neuralnet
+C50
