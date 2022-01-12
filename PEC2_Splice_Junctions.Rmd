@@ -48,7 +48,7 @@ library(h2o)
 
 # Datos del Estudio
 
-<p align="justify">Para comenzar el análisis, lo primero que debemos hacer es introducir nuestros datos en R y dividirlos en dos sets de datos, train y test, para poder implementar los distintos clasificadores utilizando los mismo parámetros de entrada y por lo tanto poderlos comparar entre sí. Vamos a introducir los datos del fichero **splice.csv** y vamos a transformarlo para que sea más facil de utilizar a la hora de implementar los algoritmos. Vamos a modificar la columna que nos muestra la clase de secuencia para que sea un factor con 3 niveles</p>
+<p align="justify">Para comenzar el análisis, lo primero que debemos hacer es introducir nuestros datos en R y analizarlos para comprender su estructura y poder utilizarlos a la hora de implementar los distintos clasificadores. Para ello, vamos a introducir los datos del fichero **splice.csv**, los vamos a visualizar y vamos a realizar las transformaciones necesarias sobre ellos para arreglarlos de acuerdo a nuestras necesidades posteriores, en este caso, tan solo vamos a modificar la columna en la que aparece la clase de secuencia para que se muestre como un factor de 3 niveles</p>
 
 ```{r}
 SpliceData <- read.csv("splice.csv", sep = ",", header = TRUE)
@@ -60,7 +60,7 @@ knitr::kable(head(SpliceData[,1:10])) %>%
   kable_minimal(full_width = T)
 ```
 
-<p align="justify">Podemos mostrar como se dividen las secuencias entre las 3 classes del set de datos, las zonas frontera, EI, las IE y los tránscritos sin zonas de splicing. Se puede comprobar que más o menos la mitad de las secuencias no contienen zonas de splicing mientras que la otra mitad se dividen equitativamente entre las secuencias frontera Intrón-Exón y las Exón-Intrón</p>
+<p align="justify">Podemos mostrar como se dividen las secuencias entre las 3 classes del set de datos, las zonas frontera EI, las zonas frontera IE y los tránscritos sin zonas de splicing. Se puede comprobar que más o menos la mitad de las secuencias no contienen zonas de splicing mientras que la otra mitad se dividen equitativamente entre las secuencias frontera Intrón-Exón y las Exón-Intrón</p>
 
 ```{r}
 table_prop <- count(SpliceData, class)
@@ -73,10 +73,15 @@ knitr::kable(table_prop) %>%
 
 # Autoencoder Convolucional
 
+<p align="justify">Como las secuencias, que utilizaremos como predictores, han sido codificadas mediante el sistema one-hot rod, el data frame se ha vuelto muy grande y complejo, lo que va a hacer que los tiempos de training de nuestros clasificadores se vuelvan excesivamente largos y poco eficientes. Para mejorar esto, lo que haremos será implementar un autoencoder convolucional que reduzca la complejidad de los predictores y reduzca los tiempos de training de los clasificadores.</p>
+
+<p align="justify">Para realizar el autoencoder, hemos utilizado el paquete h2o y hemos extraido del autoencoder generado la capa intermedia con los predictores simplificados</p>
+
 ```{r, cache= TRUE}
 h2o.no_progress()  # desactivamos las barras de progreso
 h2o.init(nthreads = 12, max_mem_size = "64g", enable_assertions = FALSE)  # inicializamos una instancia del H2O
 
+# generamos nuestro modelo de deeplearning autoencoder
 model <- h2o.deeplearning(
   x = 3:480,
   training_frame = as.h2o(SpliceData),
@@ -85,9 +90,11 @@ model <- h2o.deeplearning(
   ignore_const_cols = FALSE
 )
 
+# extraemos la capa intermedia del autoencoder
 ae_features <- h2o.deepfeatures(model, as.h2o(SpliceData), layer = 1)
 ```
 
+<p align="justify">A estos nuevos predictores simplificados les hemos dado forma de data frame y les hemos añadido la columna de clase en la que se indica el tipo al que pertenece cada secuencia</p>
 
 ```{r, cache= TRUE}
 ae_descriptors <- data.frame(as.matrix(ae_features))
@@ -95,7 +102,9 @@ ae_descriptors <- data.frame(as.matrix(ae_features))
 ae_descriptors$class <- SpliceData$class
 ```
 
-<p align="justify">Vamos a mezclar las filas para que no estén agrupadas las lecturas de las distintas clases, vamos a dividir el data set en dos partes, cogiendo todos los valores de las secuencias codificadas por un lado y las clases de las secuencias por otro y luego vamos a dividir el set en dos subsets de training 67% y testing 33%</p>
+# Subsets de Training y Testing
+
+<p align="justify">Una vez aplicado el autoencoder y con nuestros datos simplificados podemos realizar la división de los datos en dos sets de training y testing para poder utilizarlos a la hora de entrenar los modelos y estudiar su eficacia. Para ello vamos primero a mezclar las filas para que no estén agrupadas las lecturas de las distintas clases. Con los datos aleatorizados, vamos a dividir el data set en dos partes una de training 67% y otra de testing 33%, cogiendo todos los valores de las secuencias codificadas por un lado y las clases de las secuencias por otro</p>
 
 ```{r}
 tt_split <- function(df, train_percentage){
@@ -127,12 +136,20 @@ tt_split(ae_descriptors, 67)
 
 # Algoritmos de Clasificación
 
-<p align="justify">Con los datos del estudio ya definidos vamos a implementar los distintos algoritmos de clasificación que hemos estudiado durante el curso. Los algoritmos que implementaremos serán 6, los implementaremos utilizando el paquete **caret** y analizaremos su eficacia a la hora de clasificar las muestras utilizando la función **confusionMatrix()** del mismo</p>
+<p align="justify">Con los datos del estudio ya definidos vamos a implementar los distintos algoritmos de clasificación que hemos estudiado durante el curso. Los algoritmos que implementaremos serán 6, los implementaremos utilizando el paquete **caret** y analizaremos su eficacia a la hora de clasificar las muestras utilizando la función **confusionMatrix()** del mismo.</p>
+
+<p align="justify">Para medir la eficacia de los modelos mostramos a parte de la matriz de confusión, tres estadísticos que nos muestra la función confusionMatrix que son:</p>
+
+- Accuracy
+- P-value
+- Valor Kappa
+
+<p align="justify">Aunque las funciones de los algoritmos están montadas para que se puedan estudiar varios iteraciones de los mismos, modificando ciertos valores para comparar su eficacia, solo mostramos el algoritmo parametrizado para que realiza la mejor clasificación posible y hemos obviado el resto para no alargar demasiado el documento</p>
 
 ## Algortimo k-NN
 
 <p align="justify">Vamos a comenzar implementando un clasificador k-NN que clasifica las muestras incognita dependiendo de su proximidad con el resto de muestras conocidas. Dependiendo de que tipos de muestras estén cerca de la enigma, así la clasificará el algoritmo. Hemos probado el algoritmo con un valor de k igual a 
-1, 3, 5, 7 y hemos comprobado que el algoritmo que mejor clasificaba las muestras correctamente era el que tenía un valor de k = 7 y por ello solo mostramos su matriz de confusión para hacer más digerible el documento</p>
+1, 3, 5, 7 y hemos comprobado que el algoritmo que mejor clasificaba las muestras correctamente era el que tenía un valor de k = 7</p>
 
 ```{r, cache= TRUE}
 Knn_algor <- function(df_train, df_test, df_train_labels, df_test_labels, k = c(1,3,5,7)){
@@ -150,11 +167,13 @@ Knn_algor <- function(df_train, df_test, df_train_labels, df_test_labels, k = c(
 Knn_algor(df_train, df_test, df_train_labels, df_test_labels, k = 7)
 ```
 
+<p align="justify">Podemos ver que la clasificación por parte del algoritmo knn de los datos no es muy efectiva, obteniendo un total de `r 74+79` falsos negativos en los que se ha clasificado las secuencias como **N** cuando en realidad si presentaban secuencias de unión exón-intrón o vicevers. Por ello aunque el p-valor sea significativo, los valores de accuracy y Kappa no son muy elevados y se encuentran cerca del 0.8 y 0.7 respectivamente</p>
+
 ## Algoritmo Naive Bayes
 
 <p align="justify">El segundo algoritmo que vamos a utilizar para clasificar nuestras secuencias será el algoritmo Naive Bayes. Este algoritmo se basa en el Teorema de Bayes y asume que los predictores son independientes entre sí. Vamos a probar el algoritmo para dos niveles del valor laplace, 0 y 1, pero mostraremos tan solo la iteración del algoritmo que creamos que hace un mejor trabajo a la hora de clasificar correctamente las secuencias.</p>
 
-<p align="justify">En este caso no hemos sabido ajustar el modelo adecaudamente y por ello, el modelo ha obviado la clase EI y no ha clasificado ninguna secuencia como perteneciente a esta clase. De todos modos, en ambos casos, tanto para el valor de laplace = 0 como para laplace = 1, y por lo tanto hemos escogido el modelo sin aplanar para mostrarlo en el resultado final</p>
+<p align="justify">En este caso, ambos modelos han generado una clasificación exactamente igual, tanto para el valor de laplace = 0 como para laplace = 1, y por lo tanto hemos escogido el modelo sin aplanar para mostrarlo en el resultado final. Como podemos ver, en la tabla de resumen del algoritmo, este algoritmo ha hecho un mejor trabajo a la hora de clasificar las muestras que el modelo de knn y por ello sus valores Kappa y de accuracy son mucho más elevados y están ambos en torno a 0.9. También podemos observar que la matriz de confusión presenta una mayor cantidad de aciertos y el número de falsos positivos y negativos es muy inferior</p>
 
 ```{r, cache = TRUE}
 NB_algor <- function(df_train, df_test, df_train_labels, df_test_labels, laplace = c(0, 1)){
@@ -175,7 +194,9 @@ NB_algor(df_train, df_test, df_train_labels, df_test_labels, laplace = 0)
 
 ## Artificial Neural Network
 
-<p align="justify"></p>
+<p align="justify">Este siguiente algoritmo de clasificación que vamos a implementar es una red neuronal artificial, que es un algoritmo que imita el comportamiento del cerebro humano para extraer patrones dentro de los datos que a primera vista no serían discernibles. Hemos generado 3 redes neuronales con 2 capas cada uno, la primera de 100 nodos y la segunda de (5, 10 y 20) nodos. Como en los algoritmos anteriores, nos hemos quedado con la red neuronal que mejor clasificaba nuestras muestras, que en este caso ha sido la red neuronal (100, 5).</p>
+
+<p align="justify">Como podemos ver, esta red neuronal ha realizado un mejor trabajo de clasificación que cualquiera de las dos anteriores, obteniendo los valores de los estadísticos kappa y accuracy más altos de todos. También podemos ver que las clasificaciones erroneas que ha realizado la red son muy pocas y solo ha tenido problemas considerables en algunos casos en los que ha clasificado las muestras **EI** como **N** erroneamente</p>
 
 ```{r, cache = TRUE}
 NN_class <- function(df_train_data, df_test, df_test_labels, p = c(5, 10, 20)){
@@ -195,13 +216,14 @@ NN_class <- function(df_train_data, df_test, df_test_labels, p = c(5, 10, 20)){
 
 }
 
-NN_class(df_train_data, df_test, df_test_labels)
+NN_class(df_train_data, df_test, df_test_labels, p = 5)
 ```
-
 
 ## Support Vector Machine
 
-```{r, cache =TRUE}
+<p align="justify">Tras implementar la red neuronal, hemos implementado un clasificador del tipo SVM, que es otro tipo de clasificador similar a las redes neuronales. En este caso hemos realizado dos tipos de clasificadores SVM, un clasificador rbf y un clasificador de kernel lineal. En nuestro caso, el clasificador de tipo rbf es el que ha demostrado ser más preciso a la hora de clasificar correctamente nuestras secuencias. Como en el caso de la red neuronal, este clasificador ha realizado un gran trabajo y ha sido capaz de clasificar correctamente casi todas las muestras sin apenas errores. Por ello, los valores de Kappa y accuracy de este clasificador, son los más elevados de todos los analizados hasta ahora</p>
+
+```{r, cache =TRUE, warning = FALSE}
 SVM_class <- function(df_train_data, df_test, df_test_labels, kernel = c("rbfdot", "vanilladot")){
 
   for(i in kernel){
@@ -221,6 +243,8 @@ SVM_class(df_train_data, df_test, df_test_labels, kernel = "rbfdot")
 
 ## Árbol de Clasificación
 
+<p align="justify">En este caso, vamos a generar un árbol de clasificación que dividirá nuestras secuencias en sectores dependiendo de a que clase pertenezca y de este modo conseguirá clasificar las incognitas. En este caso hemos realizado el árbol con y sin boosting, pero como los dos modelos eran iguales hemos decidido mostrar tan solo el modelo sin boosting. Como se puede ver en la matriz y en los estadísticos, este arbol de clasificación ha conseguido predecir los tipos de secuencia de manera muy efectiva, aunque sigue teniendo un rendimiento peor que el del clasificador SVM</p>
+
 ```{r, cache =TRUE}
 Tree_class <- function(df_train, df_test, df_train_labels, df_test_labels, boosting = c(0, 1)){
 
@@ -236,12 +260,12 @@ Tree_class <- function(df_train, df_test, df_train_labels, df_test_labels, boost
 
 }
 
-Tree_class(df_train, df_test, df_train_labels, df_test_labels)
+Tree_class(df_train, df_test, df_train_labels, df_test_labels, boosting = 0)
 ```
 
 ## Random Forest
 
-Random Forest. Se explorará la opción de número de árboles n = 50, 100.
+<p align="justify">Por último hemos implementado un clasificador del tipo Random Forest, variendo el número de árboles entre 50 y 100. Al final los dos clasificadores han tenido los mismo resultados y por ello hemos decidido mostrar tan solo el clasificador más simple con un menor número de árboles. En cuanto a su rendimiento, podemos ver que el poder de clasificación de este algoritmo ha sido muy similar al obtenido con el árbol de clasificación y por ello sus valores en todos los aspectos son muy similares</p>
 
 ```{r, cache =TRUE}
 RandomF_class <- function(df_train, df_test, df_train_labels, df_test_labels, n = c(50, 100)){
@@ -258,5 +282,9 @@ RandomF_class <- function(df_train, df_test, df_train_labels, df_test_labels, n 
 
 }
 
-Tree_class(df_train, df_test, df_train_labels, df_test_labels)
+Tree_class(df_train, df_test, df_train_labels, df_test_labels, n = 50)
 ```
+
+# Discusión de los Resultados
+
+<p align="justify">Como conclusión, en este análisis, hemos podido estudiar los principales algoritmos de clasificación que existen hoy en día en Machine Learning, y los hemos estudiado en un orden de menor a mayor potencia. Mientras que los primeros algoritmos, como el knn o el naive-bayes presentan más problemas a la hora de clasificar las secuencias correctamente, y cometen más fallos, son algoritmos mucho más simples que requieren de un menor poder de computación. Por el contrario, el la red neuronal o el algoritmo de SVM, son los que han demostrado un mayor rendimiento a la hora de clasificar las secuencias y han obtenido unos valores de Kappa y de accuracy más elevados que el resto, pero también han sido los algoritmos que más recursos de computación han requerido</p>
