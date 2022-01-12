@@ -11,7 +11,7 @@
 
 <meta name="author" content="Marcos Zamora Amengual" />
 
-<meta name="date" content="2022-01-11" />
+<meta name="date" content="2022-01-12" />
 
 <title>PEC4: Clasificación de Splice Junctions</title>
 
@@ -245,7 +245,7 @@ div.tocify {
 
 <h1 class="title toc-ignore">PEC4: Clasificación de Splice Junctions</h1>
 <h4 class="author">Marcos Zamora Amengual</h4>
-<h4 class="date">2022-01-11</h4>
+<h4 class="date">2022-01-12</h4>
 
 </div>
 
@@ -264,8 +264,8 @@ Vamos a generar una serie de clasificadores para predecir los sitios de splicing
 <li>Random Forest</li>
 </ul>
 </div>
-<div id="muestras-de-train-y-test" class="section level1" number="2">
-<h1 number="2"><span class="header-section-number">2</span> Muestras de Train y Test</h1>
+<div id="datos-del-estudio" class="section level1" number="2">
+<h1 number="2"><span class="header-section-number">2</span> Datos del Estudio</h1>
 <p align="justify">
 Para comenzar el análisis, lo primero que debemos hacer es introducir nuestros datos en R y dividirlos en dos sets de datos, train y test, para poder implementar los distintos clasificadores utilizando los mismo parámetros de entrada y por lo tanto poderlos comparar entre sí. Vamos a introducir los datos del fichero <strong>splice.csv</strong> y vamos a transformarlo para que sea más facil de utilizar a la hora de implementar los algoritmos. Vamos a modificar la columna que nos muestra la clase de secuencia para que sea un factor con 3 niveles
 </p>
@@ -553,6 +553,43 @@ N
 </tr>
 </tbody>
 </table>
+</div>
+<div id="autoencoder-convolucional" class="section level1" number="3">
+<h1 number="3"><span class="header-section-number">3</span> Autoencoder Convolucional</h1>
+<pre class="r"><code>h2o.no_progress()  # desactivamos las barras de progreso
+h2o.init(nthreads = 12, max_mem_size = &quot;64g&quot;, enable_assertions = FALSE)  # inicializamos una instancia del H2O</code></pre>
+<pre><code> Connection successful!
+
+R is connected to the H2O cluster: 
+    H2O cluster uptime:         1 hours 40 seconds 
+    H2O cluster timezone:       Europe/Paris 
+    H2O data parsing timezone:  UTC 
+    H2O cluster version:        3.36.0.1 
+    H2O cluster version age:    13 days  
+    H2O cluster name:           H2O_started_from_R_marc__dgj304 
+    H2O cluster total nodes:    1 
+    H2O cluster total memory:   0.63 GB 
+    H2O cluster total cores:    8 
+    H2O cluster allowed cores:  8 
+    H2O cluster healthy:        TRUE 
+    H2O Connection ip:          localhost 
+    H2O Connection port:        54321 
+    H2O Connection proxy:       NA 
+    H2O Internal Security:      FALSE 
+    H2O API Extensions:         Amazon S3, Algos, Infogram, AutoML, Core V3, TargetEncoder, Core V4 
+    R Version:                  R version 4.1.2 (2021-11-01) </code></pre>
+<pre class="r"><code>model &lt;- h2o.deeplearning(
+  x = 3:480,
+  training_frame = as.h2o(SpliceData),
+  autoencoder = TRUE,
+  activation = &quot;Tanh&quot;,
+  ignore_const_cols = FALSE
+)
+
+ae_features &lt;- h2o.deepfeatures(model, as.h2o(SpliceData), layer = 1)</code></pre>
+<pre class="r"><code>ae_descriptors &lt;- data.frame(as.matrix(ae_features))
+
+ae_descriptors$class &lt;- SpliceData$class</code></pre>
 <p align="justify">
 Vamos a mezclar las filas para que no estén agrupadas las lecturas de las distintas clases, vamos a dividir el data set en dos partes, cogiendo todos los valores de las secuencias codificadas por un lado y las clases de las secuencias por otro y luego vamos a dividir el set en dos subsets de training 67% y testing 33%
 </p>
@@ -564,25 +601,23 @@ Vamos a mezclar las filas para que no estén agrupadas las lecturas de las disti
   rows &lt;- sample(nrow(df), replace =FALSE)
   df &lt;- df[rows, ]
   
+  labelsIndex &lt;- grep(&quot;class&quot;, colnames(df))
+  
   # dividimos los data sets en train y test data y extraemos la columna correspondiente a las labels para cada set
   percent &lt;- round(((nrow(SpliceData)/100) * train_percentage), 0)
   
-  df_train_data &lt;&lt;- df[1:percent, -2]
+  df_train_data &lt;&lt;- df[1:percent, ]
   
-  df_train &lt;&lt;- df[1:percent, -c(1,2)]
-  df_test &lt;&lt;- df[(percent+1):nrow(df), -c(1,2)]
+  df_train &lt;&lt;- df[1:percent, -labelsIndex]
+  df_test &lt;&lt;- df[(percent+1):nrow(df), -labelsIndex]
   
   # dividimos los data sets en train y test data y extraemos la columna correspondiente a las labels para cada set
-  df_train_labels &lt;&lt;- c(df[1:percent, 1])
-  df_test_labels &lt;&lt;- c(df[(percent+1):nrow(df),1])
+  df_train_labels &lt;&lt;- c(df[1:percent, labelsIndex])
+  df_test_labels &lt;&lt;- c(df[(percent+1):nrow(df), labelsIndex])
   
 }
 
-tt_split(SpliceData, 67)</code></pre>
-</div>
-<div id="autoencoder-convolucional" class="section level1" number="3">
-<h1 number="3"><span class="header-section-number">3</span> Autoencoder Convolucional</h1>
-<pre class="r"><code># Autoencoder</code></pre>
+tt_split(ae_descriptors, 67)</code></pre>
 </div>
 <div id="algoritmos-de-clasificación" class="section level1" number="4">
 <h1 number="4"><span class="header-section-number">4</span> Algoritmos de Clasificación</h1>
@@ -592,7 +627,7 @@ Con los datos del estudio ya definidos vamos a implementar los distintos algorit
 <div id="algortimo-k-nn" class="section level2" number="4.1">
 <h2 number="4.1"><span class="header-section-number">4.1</span> Algortimo k-NN</h2>
 <p align="justify">
-Vamos a comenzar implementando un clasificador k-NN que clasifica las muestras enigma dependiendo de su proximidad con el resto de muestras conocidas. Dependiendo de que tipos de muestras estén cerca de la enigma, así la clasificará el algoritmo. Hemos probado el algoritmo con un valor de k igual a 1, 3, 5, 7 y hemos comprobado que el algoritmo que mejor clasificaba las muestras correctamente era el que tenía un valor de k = 7 y por ello solo mostramos su matriz de confusión para hacer más digerible el documento
+Vamos a comenzar implementando un clasificador k-NN que clasifica las muestras incognita dependiendo de su proximidad con el resto de muestras conocidas. Dependiendo de que tipos de muestras estén cerca de la enigma, así la clasificará el algoritmo. Hemos probado el algoritmo con un valor de k igual a 1, 3, 5, 7 y hemos comprobado que el algoritmo que mejor clasificaba las muestras correctamente era el que tenía un valor de k = 7 y por ello solo mostramos su matriz de confusión para hacer más digerible el documento
 </p>
 <pre class="r"><code>Knn_algor &lt;- function(df_train, df_test, df_train_labels, df_test_labels, k = c(1,3,5,7)){
   
@@ -611,32 +646,32 @@ Knn_algor(df_train, df_test, df_train_labels, df_test_labels, k = 7)</code></pre
 
       Predicha
 Actual  EI  IE   N
-    EI 239  11  71
-    IE  19 227  81
-    N    6   2 397
+    EI 236  10  74
+    IE  20 228  79
+    N    8   2 396
 
 Overall Statistics
                                          
-               Accuracy : 0.8196         
-                 95% CI : (0.795, 0.8423)
+               Accuracy : 0.8167         
+                 95% CI : (0.792, 0.8396)
     No Information Rate : 0.5214         
     P-Value [Acc &gt; NIR] : &lt; 2.2e-16      
                                          
-                  Kappa : 0.7234         
+                  Kappa : 0.7189         
                                          
  Mcnemar&#39;s Test P-Value : &lt; 2.2e-16      
 
 Statistics by Class:
 
                      Class: EI Class: IE Class: N
-Sensitivity             0.9053    0.9458   0.7231
-Specificity             0.8961    0.8770   0.9841
-Pos Pred Value          0.7445    0.6942   0.9802
-Neg Pred Value          0.9658    0.9821   0.7654
+Sensitivity             0.8939    0.9500   0.7213
+Specificity             0.8935    0.8782   0.9802
+Pos Pred Value          0.7375    0.6972   0.9754
+Neg Pred Value          0.9618    0.9835   0.7635
 Prevalence              0.2507    0.2279   0.5214
-Detection Rate          0.2270    0.2156   0.3770
-Detection Prevalence    0.3048    0.3105   0.3846
-Balanced Accuracy       0.9007    0.9114   0.8536</code></pre>
+Detection Rate          0.2241    0.2165   0.3761
+Detection Prevalence    0.3039    0.3105   0.3856
+Balanced Accuracy       0.8937    0.9141   0.8507</code></pre>
 </div>
 <div id="algoritmo-naive-bayes" class="section level2" number="4.2">
 <h2 number="4.2"><span class="header-section-number">4.2</span> Algoritmo Naive Bayes</h2>
@@ -659,72 +694,165 @@ En este caso no hemos sabido ajustar el modelo adecaudamente y por ello, el mode
   }
 }
 
-NB_algor(df_train, df_test, df_train_labels, df_test_labels, laplace = 1)</code></pre>
+NB_algor(df_train, df_test, df_train_labels, df_test_labels, laplace = 0)</code></pre>
 <pre><code>Confusion Matrix and Statistics
 
       Predicha
 Actual  EI  IE   N
-    EI   0   0   1
-    IE 102 239  29
-    N  162   1 519
+    EI 239   7  14
+    IE  11 224  20
+    N   14   9 515
 
 Overall Statistics
                                           
-               Accuracy : 0.7198          
-                 95% CI : (0.6917, 0.7468)
+               Accuracy : 0.9288          
+                 95% CI : (0.9115, 0.9436)
     No Information Rate : 0.5214          
-    P-Value [Acc &gt; NIR] : &lt; 2.2e-16       
+    P-Value [Acc &gt; NIR] : &lt;2e-16          
                                           
-                  Kappa : 0.5186          
+                  Kappa : 0.8845          
                                           
- Mcnemar&#39;s Test P-Value : &lt; 2.2e-16       
+ Mcnemar&#39;s Test P-Value : 0.1674          
 
 Statistics by Class:
 
                      Class: EI Class: IE Class: N
-Sensitivity          0.0000000    0.9958   0.9454
-Specificity          0.9987326    0.8389   0.6766
-Pos Pred Value       0.0000000    0.6459   0.7610
-Neg Pred Value       0.7490494    0.9985   0.9191
-Prevalence           0.2507123    0.2279   0.5214
-Detection Rate       0.0000000    0.2270   0.4929
-Detection Prevalence 0.0009497    0.3514   0.6477
-Balanced Accuracy    0.4993663    0.9174   0.8110</code></pre>
+Sensitivity             0.9053    0.9333   0.9381
+Specificity             0.9734    0.9619   0.9544
+Pos Pred Value          0.9192    0.8784   0.9572
+Neg Pred Value          0.9685    0.9799   0.9340
+Prevalence              0.2507    0.2279   0.5214
+Detection Rate          0.2270    0.2127   0.4891
+Detection Prevalence    0.2469    0.2422   0.5109
+Balanced Accuracy       0.9393    0.9476   0.9462</code></pre>
 </div>
 <div id="artificial-neural-network" class="section level2" number="4.3">
 <h2 number="4.3"><span class="header-section-number">4.3</span> Artificial Neural Network</h2>
 <p align="justify">
 </p>
-<pre class="r"><code># NN_class &lt;- function(df_train_data, df_test, df_test_labels, p = c(5, 10, 20)){
-#   
-#   for(i in p){
-#     NNmodel &lt;- neuralnet(class ~ ., data = df_train_data, hidden = c(100, i), act.fct = &quot;logistic&quot;)
-#     
-#     NN_pred &lt;- compute(NNmodel, df_test)
-#     
-#     # predicted &lt;- NN_pred$net.result
-#     #  
-#     # print(predicted)
-#   }
-#   
-# }
-# 
-# NN_class(df_train_data, df_test, df_test_labels)</code></pre>
+<pre class="r"><code>NN_class &lt;- function(df_train_data, df_test, df_test_labels, p = c(5, 10, 20)){
+
+  for(i in p){
+    NNmodel &lt;- neuralnet(class ~ ., data = df_train_data, hidden = c(100, i), linear.output = FALSE)
+
+    NN_pred &lt;- compute(NNmodel, df_test)
+
+    predicted &lt;- NN_pred$net.result
+
+    predicted = data.frame(&quot;predicted&quot;= ifelse(max.col(predicted[ ,1:3]) == 1, &quot;EI&quot;,
+                       ifelse(max.col(predicted[ ,1:3])==2, &quot;IE&quot;, &quot;N&quot;)))
+
+    print(confusionMatrix(as.factor(predicted$predicted), df_test_labels))
+  }
+
+}
+
+NN_class(df_train_data, df_test, df_test_labels)</code></pre>
+<pre><code>Confusion Matrix and Statistics
+
+          Reference
+Prediction  EI  IE   N
+        EI 248   7   6
+        IE   9 228  24
+        N    7   5 519
+
+Overall Statistics
+                                          
+               Accuracy : 0.9449          
+                 95% CI : (0.9294, 0.9579)
+    No Information Rate : 0.5214          
+    P-Value [Acc &gt; NIR] : &lt; 2.2e-16       
+                                          
+                  Kappa : 0.9109          
+                                          
+ Mcnemar&#39;s Test P-Value : 0.005149        
+
+Statistics by Class:
+
+                     Class: EI Class: IE Class: N
+Sensitivity             0.9394    0.9500   0.9454
+Specificity             0.9835    0.9594   0.9762
+Pos Pred Value          0.9502    0.8736   0.9774
+Neg Pred Value          0.9798    0.9848   0.9425
+Prevalence              0.2507    0.2279   0.5214
+Detection Rate          0.2355    0.2165   0.4929
+Detection Prevalence    0.2479    0.2479   0.5043
+Balanced Accuracy       0.9615    0.9547   0.9608
+Confusion Matrix and Statistics
+
+          Reference
+Prediction  EI  IE   N
+        EI 247   8  11
+        IE   9 219  10
+        N    8  13 528
+
+Overall Statistics
+                                          
+               Accuracy : 0.944           
+                 95% CI : (0.9283, 0.9571)
+    No Information Rate : 0.5214          
+    P-Value [Acc &gt; NIR] : &lt;2e-16          
+                                          
+                  Kappa : 0.9086          
+                                          
+ Mcnemar&#39;s Test P-Value : 0.8197          
+
+Statistics by Class:
+
+                     Class: EI Class: IE Class: N
+Sensitivity             0.9356    0.9125   0.9617
+Specificity             0.9759    0.9766   0.9583
+Pos Pred Value          0.9286    0.9202   0.9617
+Neg Pred Value          0.9784    0.9742   0.9583
+Prevalence              0.2507    0.2279   0.5214
+Detection Rate          0.2346    0.2080   0.5014
+Detection Prevalence    0.2526    0.2260   0.5214
+Balanced Accuracy       0.9558    0.9446   0.9600
+Confusion Matrix and Statistics
+
+          Reference
+Prediction  EI  IE   N
+        EI 246   9   9
+        IE  10 222  16
+        N    8   9 524
+
+Overall Statistics
+                                          
+               Accuracy : 0.9421          
+                 95% CI : (0.9262, 0.9554)
+    No Information Rate : 0.5214          
+    P-Value [Acc &gt; NIR] : &lt;2e-16          
+                                          
+                  Kappa : 0.9059          
+                                          
+ Mcnemar&#39;s Test P-Value : 0.5577          
+
+Statistics by Class:
+
+                     Class: EI Class: IE Class: N
+Sensitivity             0.9318    0.9250   0.9545
+Specificity             0.9772    0.9680   0.9663
+Pos Pred Value          0.9318    0.8952   0.9686
+Neg Pred Value          0.9772    0.9776   0.9512
+Prevalence              0.2507    0.2279   0.5214
+Detection Rate          0.2336    0.2108   0.4976
+Detection Prevalence    0.2507    0.2355   0.5138
+Balanced Accuracy       0.9545    0.9465   0.9604</code></pre>
 </div>
 <div id="support-vector-machine" class="section level2" number="4.4">
 <h2 number="4.4"><span class="header-section-number">4.4</span> Support Vector Machine</h2>
 <pre class="r"><code>SVM_class &lt;- function(df_train_data, df_test, df_test_labels, kernel = c(&quot;rbfdot&quot;, &quot;vanilladot&quot;)){
-  
+
   for(i in kernel){
     SVMmodel &lt;- ksvm(class ~ ., data = df_train_data, trials = i)
-    
+
     SVM_pred &lt;- predict(SVMmodel, df_test)
-    
+
     tab &lt;- table(SVM_pred, df_test_labels, dnn = c(&quot;Actual&quot;, &quot;Predicha&quot;))
-    
+
     print(confusionMatrix(tab))
   }
-  
+
 }
 
 SVM_class(df_train_data, df_test, df_test_labels, kernel = &quot;rbfdot&quot;)</code></pre>
@@ -841,6 +969,81 @@ Balanced Accuracy       0.9564    0.9415   0.9659</code></pre>
 <div id="random-forest" class="section level2" number="4.6">
 <h2 number="4.6"><span class="header-section-number">4.6</span> Random Forest</h2>
 <p>Random Forest. Se explorará la opción de número de árboles n = 50, 100.</p>
+<pre class="r"><code>RandomF_class &lt;- function(df_train, df_test, df_train_labels, df_test_labels, n = c(50, 100)){
+
+  for(i in n){
+    RandomFModel &lt;- randomForest(df_train, df_train_labels, maxnodes = i)
+
+    RandomFModel_pred &lt;- predict(RandomFModel, df_test)
+
+    tab &lt;- table(RandomFModel_pred, df_test_labels, dnn = c(&quot;Actual&quot;, &quot;Predicha&quot;))
+
+    print(confusionMatrix(tab))
+  }
+
+}
+
+Tree_class(df_train, df_test, df_train_labels, df_test_labels)</code></pre>
+<pre><code>Confusion Matrix and Statistics
+
+      Predicha
+Actual  EI  IE   N
+    EI 247  14   4
+    IE   8 219  16
+    N    9   7 529
+
+Overall Statistics
+                                          
+               Accuracy : 0.9449          
+                 95% CI : (0.9294, 0.9579)
+    No Information Rate : 0.5214          
+    P-Value [Acc &gt; NIR] : &lt; 2e-16         
+                                          
+                  Kappa : 0.9104          
+                                          
+ Mcnemar&#39;s Test P-Value : 0.06935         
+
+Statistics by Class:
+
+                     Class: EI Class: IE Class: N
+Sensitivity             0.9356    0.9125   0.9636
+Specificity             0.9772    0.9705   0.9683
+Pos Pred Value          0.9321    0.9012   0.9706
+Neg Pred Value          0.9784    0.9741   0.9606
+Prevalence              0.2507    0.2279   0.5214
+Detection Rate          0.2346    0.2080   0.5024
+Detection Prevalence    0.2517    0.2308   0.5176
+Balanced Accuracy       0.9564    0.9415   0.9659
+Confusion Matrix and Statistics
+
+      Predicha
+Actual  EI  IE   N
+    EI 247  14   4
+    IE   8 219  16
+    N    9   7 529
+
+Overall Statistics
+                                          
+               Accuracy : 0.9449          
+                 95% CI : (0.9294, 0.9579)
+    No Information Rate : 0.5214          
+    P-Value [Acc &gt; NIR] : &lt; 2e-16         
+                                          
+                  Kappa : 0.9104          
+                                          
+ Mcnemar&#39;s Test P-Value : 0.06935         
+
+Statistics by Class:
+
+                     Class: EI Class: IE Class: N
+Sensitivity             0.9356    0.9125   0.9636
+Specificity             0.9772    0.9705   0.9683
+Pos Pred Value          0.9321    0.9012   0.9706
+Neg Pred Value          0.9784    0.9741   0.9606
+Prevalence              0.2507    0.2279   0.5214
+Detection Rate          0.2346    0.2080   0.5024
+Detection Prevalence    0.2517    0.2308   0.5176
+Balanced Accuracy       0.9564    0.9415   0.9659</code></pre>
 </div>
 </div>
 
